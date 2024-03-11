@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { ethers } from 'ethers';
-import Web3 from 'web3';
+// import Web3 from 'web3';
 
 import { contractABI, contractAddress } from '../utils/constants';
 
@@ -16,13 +16,12 @@ console.log(ethereum);
 //object to fetch our ethereum contract
 const getEthereumContract = () => {
     // const provider = new ethers.providers.Web3Provider(window.ethereum);
-    const provider = new ethers.BrowserProvider(window.ethereum);  //window.
+    const provider = new ethers.providers.Web3Provider(ethereum);  //window.
     const signer = provider.getSigner();
     const transactionContract = new ethers.Contract(contractAddress, contractABI, signer);
 
     return transactionContract;
-
-}
+};
 
 //creating context for getEthereumContract
 export const TransactionProvider = ({ children }) => {
@@ -31,9 +30,34 @@ export const TransactionProvider = ({ children }) => {
     const [isLoading, setIsLoading] = useState(false)
     //the value of transactionCount is reset every time we reload our browser so we store transaction count into localStorage
     const [transactionCount, setTransactionCount] = useState(localStorage.getItem('transactionCount'))
+    const [transactions, setTransactions] = useState([])
 
     const handleChange = (e, name) =>{
         setFormData((prevState)=> ({ ...prevState, [name]: e.target.value}));
+    }
+
+    const getAllTransactions = async () => {
+        try {
+            if(!ethereum) return alert("Please install metamask");
+
+            const transactionContract = getEthereumContract();
+            const availableTransactions = await transactionContract.getAllTransactions();
+
+            const structuredTransactions = availableTransactions.map((transaction) => ({
+                addressTo: transaction.receiver,
+                addressFrom: transaction.sender,
+                timestamp: new Date(transaction.timestamp.toNumber() * 1000).toLocaleString(),
+                message: transaction.message,
+                keyword: transaction.keyword,
+                amount: parseInt(transaction.amount._hex) / (10**18)    //all units are written in hexadecimal wei, to get ETH, * (10**18)
+            }))
+            console.log(structuredTransactions);
+
+            setTransactions(structuredTransactions)
+
+        } catch (error) {
+            console.log(error);
+        }
     }
 
     const checkIfWalletIsConnected = async () => {
@@ -46,6 +70,7 @@ export const TransactionProvider = ({ children }) => {
 
             if(accounts.length){
                 setCurrentAccount(accounts[0]);
+                getAllTransactions()
             }else{
                 console.log("No accounts found!");
             }
@@ -53,6 +78,17 @@ export const TransactionProvider = ({ children }) => {
             console.log(error);
 
             throw new Error ("No ethereum object.");
+        }
+    }
+
+    const checkIfTransactionsExist = async () => {
+        try {
+            const transactionContract = getEthereumContract();
+            const transactionCount = await transactionContract.getTransactinCount();
+
+            window.localStorage.setItem("transactionCount", transactionCount)
+        } catch (error) {
+
         }
     }
 
@@ -77,7 +113,7 @@ export const TransactionProvider = ({ children }) => {
                 const { addressTo, amount, keyword, message} = formData;
                 const transactionContract = getEthereumContract();
                 //converting decimal to hexadecimal for sending transaction to the blockchain
-                const parsedAmount = ethers.parseEther(amount);
+                const parsedAmount = ethers.utils.parseEther(amount);
 
                 //sending ethereum from one addess to another
                 await ethereum.request({
@@ -86,7 +122,7 @@ export const TransactionProvider = ({ children }) => {
                         from: currentAccount,
                         to: addressTo,
                         gas: '0x5208',  //hexadecimal amount of 21000 GWEI -> 0.000021 ETH
-                        value: parseInt(Web3.utils.toWei(amount,"ether")).toString(16),    //parsedAmount._hex
+                        value: parsedAmount._hex,    //parsedAmount._hex
                     }]
 
                 })
@@ -101,7 +137,6 @@ export const TransactionProvider = ({ children }) => {
                 console.log(`Sucess - ${transactionHash.hash}`)
 
                 const transactionCount = await transactionContract.getTransactinCount();
-
                 setTransactionCount(transactionCount.toNumber())
 
             } catch (error) {
@@ -114,10 +149,13 @@ export const TransactionProvider = ({ children }) => {
     //calling the function to check if the wallet is connected, it will load once when the page is loaded
     useEffect(() => {
         checkIfWalletIsConnected();
+        checkIfTransactionsExist();
     }, [])
 
+    console.log(transactions);
+
     return(
-        <TransactionContext.Provider value={{connectWallet, currentAccount, formData, setFormData, sendTransaction, handleChange}}>
+        <TransactionContext.Provider value={{connectWallet, currentAccount, formData, setFormData, sendTransaction, handleChange, transactions, isLoading}}>
             {children}
         </TransactionContext.Provider>
     )

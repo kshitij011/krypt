@@ -1,5 +1,6 @@
 import {  Welcome, Footer, Transactions, Services, Loader } from './components'
 import { Navbar } from './components/Navbar.jsx'
+import React from 'react'
 
 function App() {
   return (
